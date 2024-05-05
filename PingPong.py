@@ -1,9 +1,23 @@
-from types import NoneType
-import pygame, sys
-from tkinter.messagebox import askyesno
+import sys, math, random
+
+try:
+    import pygame
+except:
+    showerror("Pygame not found","'Pygame' module for python haven't been found.")
+    sys.exit(-1)
+try:
+    import tracemalloc
+    tracemalloc_available = True
+except ModuleNotFoundError:
+    tracemalloc_available = False
+    showwarning("Tracemalloc","'tracemalloc' not found in python's modules\n\n\n\nDumbass.")
+try:
+    from additional.text import Text
+except ImportError:
+    showerror("Text missing","'Text' module from 'addition' haven't been found.")
+
+from tkinter.messagebox import askyesno, showerror, showwarning
 from pygame import Vector2, Rect, Color, Surface
-import random
-from text import Text
 
 CURSOR_SIZE = (10,10)
 MAX_BALLS = 350
@@ -17,6 +31,15 @@ MAX_HOLE_DISTANCE = 300
 gravity = 0.05
 
 VECTOR_ZERO = Vector2(0,0)
+
+def convert_size(size_bytes : int):
+   if size_bytes == 0:
+       return "0B"
+   size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+   i = int(math.floor(math.log(size_bytes, 1024)))
+   p = math.pow(1024, i)
+   s = round(size_bytes / p, 2)
+   return "%s %s" % (s, size_name[i])
 
 class Button:
     rect : Rect
@@ -88,7 +111,8 @@ class CursorRect(Rect):
         self.type = "Ball"
         self.selected_ball = -1
 
-    def update(self,balls : list[Rect], rects : list[Rect]):
+    def update(self,balls : list[Rect], rects : list[Rect], power : float):
+        global BALLS_DELETED
         self.velocity = Vector2(pygame.mouse.get_rel())
         self.speed = self.velocity.magnitude()
         match(self.type):
@@ -122,10 +146,12 @@ class CursorRect(Rect):
                 index = self.collidelist(balls)
                 if index != -1:
                     del(balls[index])
-                    print(index)
+                    BALLS_DELETED += 1
+                    #print(index)
             case "White Hole":
-                puissance = 10
+                puissance = power
                 self.topleft = pygame.mouse.get_pos()
+                pygame.draw.circle(self.surface,(50,50,50),self.topleft,290,10)
                 if pygame.mouse.get_pressed()[0]:
                     for ball in balls:
                         dist = Vector2(ball.center).distance_to(self.topleft)
@@ -267,6 +293,8 @@ class Game:
         self.text_cursor_moded = Text("2",28,"impact",(0,0),(200,255,200))
         self.text_info = Text("Info :",20,"comic sans",(0,0))
         self.nice_text = Text("Nice Balls",24,"calibri",(0,0))
+        self.power = 10
+        tracemalloc.start()
     
     def run(self):
         global BALLS_DELETED
@@ -324,8 +352,8 @@ class Game:
                     if not pygame.mouse.get_pressed()[0] and len(self.balls) > 0:
                         self.balls[self.cursor.selected_ball].selected = False
                         self.cursor.selected_ball = -1
-
-
+                if event.type == pygame.MOUSEWHEEL:
+                    self.power += event.y/10
 
             if self.running:
                 self.screen.fill((30,30,30))
@@ -342,21 +370,25 @@ class Game:
         #                        random.randint(50,200),
         #                        random.randint(50,200))))
 
-        self.cursor.update(self.balls,self.col_rect)
+        self.cursor.update(self.balls,self.col_rect,self.power)
         self.screen.blit(self.text_cursor_mode.update("Cursor Type : "),(0,0))
         self.screen.blit(self.text_cursor_moded.update(self.cursor.type),(self.text_cursor_mode.getTextsize("Cursor Type : ")[0],0))
         if len(self.balls) > 0:
             self.screen.blit(self.text_info.update("Number of Balls : {}/{}".format(len(self.balls),MAX_BALLS)),(0,40))
-            self.screen.blit(self.text_info.update("Deleted Balls : {}".format(BALLS_DELETED)),(0,65))
+            self.screen.blit(self.text_info.update("Deleted Balls : {}".format(BALLS_DELETED)),(0,70))
         self.screen.blit(self.text_info.update("FPS : " + str(round(self.clock.get_fps(),2))),(0,100))
-        self.screen.blit(self.nice_text.update("Nice Ball Project"),(0,130))
+        if tracemalloc_available:
+            self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
+        self.screen.blit(self.nice_text.update("Nice Ball Project"),(0,180))
+        self.screen.blit(self.nice_text.update("Power : " + str(self.power)[0:4]),(1100,20))
 
         for balle in self.balls:
             balle.update(self.balls,self.cursor,self.col_rect)
         
         for rectangle in self.col_rect:
             rectangle.update()
-            
+        
+        tracemalloc.take_snapshot()            
         self.ping = self.clock.tick(60)
 #endregion
 
