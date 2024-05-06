@@ -264,7 +264,7 @@ class Ball(Rect):
                 """
                     
         if self.selected:
-            self.circle_direction = VECTOR_ZERO
+            self.circle_direction = Vector2(pygame.mouse.get_rel())
             self.center = cursor.topleft
             return pygame.draw.circle(self.surface,(255,255,255),self.center,self.tsize,self.twidth)
         else:
@@ -349,7 +349,11 @@ class Game:
                                 self.balls[index].selected = True
                                 print(index)
                 if event.type == pygame.MOUSEBUTTONUP:
-                    if not pygame.mouse.get_pressed()[0] and len(self.balls) > 0:
+                    if not pygame.mouse.get_pressed()[0] and len(self.balls) > 0 and self.cursor.type == "Selector":
+                        if Vector2(pygame.mouse.get_rel()) != VECTOR_ZERO:
+                            self.balls[self.cursor.selected_ball].circle_direction = Vector2(pygame.mouse.get_rel()).normalize() * self.balls[self.cursor.selected_ball].speed
+                        else:
+                            self.circle_direction = VECTOR_ZERO
                         self.balls[self.cursor.selected_ball].selected = False
                         self.cursor.selected_ball = -1
                 if event.type == pygame.MOUSEWHEEL:
