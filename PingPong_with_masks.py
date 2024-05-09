@@ -1,5 +1,7 @@
-import sys, math, random
+import sys, math, random, tracemalloc
 from time import sleep, monotonic
+from tkinter.messagebox import askyesno, showerror, showwarning
+from typing import overload
 
 try:
     import pygame
@@ -7,29 +9,32 @@ except:
     showerror("Pygame not found","'Pygame' module for python haven't been found.")
     sys.exit(-1)
 try:
-    import tracemalloc
-    tracemalloc_available = True
+    import psutil
+    psutil_available = True
 except ModuleNotFoundError:
-    tracemalloc_available = False
-    showwarning("Tracemalloc","'tracemalloc' not found in python's modules\n\n\n\nDumbass.")
+    psutil_available = False
+    showwarning("psutil","'psutil' not found in python's modules\n\nYour CPU usage will not be showed and some other information will be discarded")
 try:
     from additional.text import Text
 except ImportError:
     showerror("Text missing","'Text' module from 'addition' haven't been found.")
+    sys.exit(-1)
 
-from tkinter.messagebox import askyesno, showerror, showwarning
-from pygame import Vector2, Rect, Color, Surface
+from pygame import Vector2, Rect, Color, Surface, Mask
 
 CURSOR_SIZE = (10,10)
 MAX_BALLS = 350
-FPS = 60
+MAX_FPS = 60
 BALLS_DELETED = 0
 CURRENT_BALL = -1
 BALL_SCREEN_FRICTION = 1
 BALL_OTHERS_FRICTION = 0.9
 MAX_HOLE_DISTANCE = 300
 
-gravity = 0.05
+CPU_CHECK_USE_FREETIME = True 
+"Use the number of remaining milliseconds 'pygame.clock.tick()'"
+
+Gravity = Vector2(0,0.05)
 
 VECTOR_ZERO = Vector2(0,0)
 
@@ -42,6 +47,7 @@ def convert_size(size_bytes : int):
    s = round(size_bytes / p, 2)
    return "%s %s" % (s, size_name[i])
 
+"""
 class Button:
     rect : Rect
     surf : Surface
@@ -50,9 +56,17 @@ class Button:
     def __init__(self, text : str, margin : int, f_color : Color, bg_color : Color):
         self.font = pygame.font.SysFont("arial",16)
         self.surf = Text()
+"""
+
+class Ball(): # type: ignore
+    rectangle : Rect
+    mask : Mask
+    tsize : int
+    twidth : int
+    circle_direction : Vector2
 
 class Collition_Rect(Rect):
-    def __init__(self, screen, rect) -> None:
+    def __init__(self, screen, rect : Rect) -> None:
         self.color = Color(255,255,255)
         self.surface = screen
         self.tsize = 5
@@ -99,7 +113,7 @@ class Collition_Rect(Rect):
         self.surprise = 3
 
 #region Cursor Class
-class CursorRect(Rect):
+class CursorRect(Mask):
     def __init__(self,screen) -> None:
         self.color = "white"
         self.surface = screen
@@ -112,7 +126,10 @@ class CursorRect(Rect):
         self.type = "Ball"
         self.selected_ball = -1
 
-    def update(self,balls : list[Rect], rects : list[Rect], power : float, delta_time : 1):
+        self.rect_begins = [0,0]
+        self.rect_end = [0,0]
+
+    def update(self,balls : list[Ball], rects : list[Rect], power : float, delta_time : float):
         global BALLS_DELETED
         self.velocity = Vector2(pygame.mouse.get_rel())
         self.speed = self.velocity.magnitude()
@@ -144,17 +161,19 @@ class CursorRect(Rect):
 
             case "Eraser":
                 self.topleft = pygame.mouse.get_pos()
-                index = self.collidelist(balls)
-                if index != -1:
-                    del(balls[index])
-                    BALLS_DELETED += 1
-                    #print(index)
+                for 
+                    index = self.overlap(balls.mask,(Vector2(self.topleft) + Vector2(ball)))
+                    if index != -1:
+                        del(balls[index])
+                        BALLS_DELETED += 1
+                        #print(index)
             case "White Hole":
                 puissance = power
                 self.topleft = pygame.mouse.get_pos()
                 pygame.draw.circle(self.surface,(50,50,50),self.topleft,MAX_HOLE_DISTANCE-1/puissance,10)
                 if pygame.mouse.get_pressed()[0]:
                     for ball in balls:
+                        if ball.center == self.topleft: return
                         dist = Vector2(ball.center).distance_to(self.topleft)
                         direction = Vector2(Vector2(ball.center) - Vector2(self.topleft)).normalize()
                         if dist < MAX_HOLE_DISTANCE:
@@ -173,6 +192,9 @@ class CursorRect(Rect):
                             norme = int((1-dist/MAX_HOLE_DISTANCE)*puissance)
                             print(dist)
                             ball.circle_direction += direction * norme
+            
+            case "Rectangle Placer":
+                pygame.draw.rect(self.surface,'white',Rect(self.rect_begins,self.rect_end))
                         
 
 
@@ -183,18 +205,14 @@ class CursorRect(Rect):
             return self.velocity.normalize()
         else:
             return Vector2(0,0)
-    
-    def explose(balls):
-        
-        pass
 #endregion
 
 #region Ball Class
-class Ball(Rect):
+@overload
+class Ball():
 
     def __init__(self, surface, start_coordinate : Vector2 = Vector2(10,10), direction : Vector2 = Vector2(1,1), color = Color(255,255,255), tsize : int | None = None, twidth : int | None = None):
-        self.topleft = start_coordinate
-        #self.size = (30,30)
+        
         self.screen_size = (1280,720)
         self.circle_direction = direction
         self.speed = 3
@@ -208,31 +226,38 @@ class Ball(Rect):
         if twidth == None: self.twidth = random.randint(4,6)
         else: self.twidth = twidth
         self.width, self.height = self.tsize*2, self.tsize*2
+
+        self.init_surface = Surface((100,100),pygame.SRCALPHA)
+        pygame.draw.circle(self.init_surface,self.color,self.center,self.tsize,self.twidth)
+        self.mask = pygame.mask.from_surface(self.init_surface)
+        self.rectangle = Rect(start_coordinate.x,start_coordinate.y,*self.mask.get_size())
+
+
         #pygame.draw.circle(self.surface,self.color,self.center,self.tsize,self.twidth,True,True,True,True)
         #print("New Rect",self)
 
     def update(self,balls_list : list[Rect], cursor : CursorRect, other_col_rect: list[Rect] | list[Collition_Rect]):
-        global gravity, BALLS_DELETED
+        global Gravity, BALLS_DELETED
 
         #region Screen Bounds
-        if self.left <= 0:
+        if self.rectangle.left <= 0:
             #print("Bounce Left")
             self.circle_direction[0] = 1
             self.speed += self.speed_up
-        if self.top <= 0:
+        if self.rectangle.top <= 0:
             #print("Bounce Up")
             self.circle_direction[1] = 1
             self.speed += self.speed_up
 
-        if self.right >= self.screen_size[0]:
+        if self.rectangle.right >= self.screen_size[0]:
             #print("Bounce Right")
             self.circle_direction[0] = -1
             self.speed += self.speed_up
 
-        if self.bottom >= self.screen_size[1]:
+        if self.rectangle.bottom >= self.screen_size[1]:
             #print("Bounce Down")
             self.circle_direction[1] = -abs(self.circle_direction[1])
-            self.bottom = self.screen_size[1]
+            self.rectangle.bottom = self.screen_size[1]
             self.speed += self.speed_up
         #endregion Screen Bounds
         
@@ -281,7 +306,7 @@ class Ball(Rect):
             self.center = cursor.topleft
             return pygame.draw.circle(self.surface,(255,255,255),self.center,self.tsize,self.twidth)
         else:
-            self.circle_direction = Vector2(self.circle_direction + Vector2(0,gravity))
+            self.circle_direction = Vector2(self.circle_direction + Gravity)
             self.topleft += self.circle_direction * 3 #* self.speed
             return pygame.draw.circle(self.surface,self.color,self.center,self.tsize,self.twidth)
 
@@ -307,6 +332,10 @@ class Game:
         self.text_info = Text("Info :",20,"comic sans",(0,0))
         self.nice_text = Text("Nice Balls",24,"calibri",(0,0))
         self.power = 10
+        self.cpu_percentage = 0
+        self.time_between_check = 1
+        self.last_check = 0
+        self.next_check = self.time_between_check
         tracemalloc.start()
     
     def run(self):
@@ -379,6 +408,7 @@ class Game:
 #endregion
     #region Game Step
     def step(self):
+        global CPU_CHECK_USE_FREETIME, MAX_FPS
         #if pygame.key.get_pressed()[pygame.K_SPACE]:
         #    self.balls.append(Ball(self.screen,
         #                        Vector2(random.randint(0,self.size[0]),random.randint(0,self.size[1])),
@@ -396,8 +426,10 @@ class Game:
             self.screen.blit(self.text_info.update("Number of Balls : {}/{}".format(len(self.balls),MAX_BALLS)),(0,40))
             self.screen.blit(self.text_info.update("Deleted Balls : {}".format(BALLS_DELETED)),(0,70))
         self.screen.blit(self.text_info.update("FPS : " + str(round(self.clock.get_fps(),2))),(0,100))
-        if tracemalloc_available:
-            self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
+        if psutil_available:
+            self.screen.blit(self.text_info.update("CPU Usage : " + str(self.cpu_percentage)),(0,200))
+            
+        self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
         self.screen.blit(self.nice_text.update("Nice Ball Project"),(0,180))
         self.screen.blit(self.nice_text.update("Power : " + str(self.power)[0:4]),(1100,20))
 
@@ -407,9 +439,16 @@ class Game:
         for rectangle in self.col_rect:
             rectangle.update()
         
-        last_check = monotonic()
-        tracemalloc.take_snapshot()            
-        self.ping = self.clock.tick(60)
+        if self.last_check > self.next_check:
+            self.next_check = monotonic() + self.time_between_check
+            if CPU_CHECK_USE_FREETIME: 
+                self.cpu_percentage = psutil.cpu_percent(delta_time) #Take the remaining time "waiting" for the next frame (last pygame.clock.tick()) and use it for a more accurate CPU Usage
+            else:
+                self.cpu_percentage = psutil.cpu_percent(0.01) #Take the remaining time "waiting" for the next frame (last pygame.clock.tick()) and use it for a more accurate CPU Usage
+                
+        self.last_check = monotonic()
+        #tracemalloc.take_snapshot()            
+        self.ping = self.clock.tick(MAX_FPS)
 #endregion
 
 if __name__ == "__main__":
