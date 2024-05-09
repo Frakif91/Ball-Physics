@@ -27,6 +27,7 @@ BALLS_DELETED = 0
 CURRENT_BALL = -1
 BALL_SCREEN_FRICTION = 1
 BALL_OTHERS_FRICTION = 0.9
+BALL_RECT_FRICTION = 0.95
 MAX_HOLE_DISTANCE = 300
 
 gravity = 0.05
@@ -112,7 +113,11 @@ class CursorRect(Rect):
         self.type = "Ball"
         self.selected_ball = -1
 
+<<<<<<< Updated upstream
     def update(self,balls : list[Rect], rects : list[Rect], power : float, delta_time : 1):
+=======
+    def update(self,balls : list[Rect], rects : list[Rect]):
+>>>>>>> Stashed changes
         global BALLS_DELETED
         self.velocity = Vector2(pygame.mouse.get_rel())
         self.speed = self.velocity.magnitude()
@@ -146,6 +151,7 @@ class CursorRect(Rect):
                 self.topleft = pygame.mouse.get_pos()
                 index = self.collidelist(balls)
                 if index != -1:
+                    BALLS_DELETED += 1
                     del(balls[index])
                     BALLS_DELETED += 1
                     #print(index)
@@ -167,6 +173,7 @@ class CursorRect(Rect):
                 pygame.draw.circle(self.surface,(50,50,50),self.topleft,290,10)
                 if pygame.mouse.get_pressed()[0]:
                     for ball in balls:
+                        if ball.center == self.topleft: break
                         dist = Vector2(ball.center).distance_to(self.topleft)
                         direction = Vector2(Vector2(ball.center) - Vector2(self.topleft)).normalize()
                         if dist < MAX_HOLE_DISTANCE:
@@ -212,26 +219,26 @@ class Ball(Rect):
         #print("New Rect",self)
 
     def update(self,balls_list : list[Rect], cursor : CursorRect, other_col_rect: list[Rect] | list[Collition_Rect]):
-        global gravity, BALLS_DELETED
+        global gravity, BALLS_DELETED, BALL_OTHERS_FRICTION, BALL_SCREEN_FRICTION
 
         #region Screen Bounds
         if self.left <= 0:
             #print("Bounce Left")
-            self.circle_direction[0] = 1
+            self.circle_direction[0] = BALL_SCREEN_FRICTION
             self.speed += self.speed_up
         if self.top <= 0:
             #print("Bounce Up")
-            self.circle_direction[1] = 1
+            self.circle_direction[1] = BALL_SCREEN_FRICTION
             self.speed += self.speed_up
 
         if self.right >= self.screen_size[0]:
             #print("Bounce Right")
-            self.circle_direction[0] = -1
+            self.circle_direction[0] = -BALL_SCREEN_FRICTION
             self.speed += self.speed_up
 
         if self.bottom >= self.screen_size[1]:
             #print("Bounce Down")
-            self.circle_direction[1] = -abs(self.circle_direction[1])
+            self.circle_direction[1] = -abs(self.circle_direction[1]) * BALL_SCREEN_FRICTION
             self.bottom = self.screen_size[1]
             self.speed += self.speed_up
         #endregion Screen Bounds
@@ -240,7 +247,7 @@ class Ball(Rect):
         if self.colliderect(cursor):
             if cursor.type == "Ball":
                 if Vector2(Vector2(self.center) - Vector2(cursor.center)) != VECTOR_ZERO:
-                    self.circle_direction = Vector2(Vector2(self.center) - Vector2(cursor.center)).normalize()
+                    self.circle_direction = Vector2(Vector2(self.center) - Vector2(cursor.center)).normalize() * BALL_OTHERS_FRICTION
             else:
                 pass
 
@@ -251,8 +258,8 @@ class Ball(Rect):
                 if balls_list[collition] != self:
                     #print(self, "<->" ,balls_list[collition])
                     if (Vector2(self.center) - Vector2(balls_list[collition].center)) != Vector2(0,0):
-                        self.circle_direction = Vector2(Vector2(self.center) - Vector2(balls_list[collition].center)).normalize()
-                        balls_list[collition].circle_direction = Vector2(Vector2(balls_list[collition].center - Vector2(self.center))).normalize()
+                        self.circle_direction = Vector2(Vector2(self.center) - Vector2(balls_list[collition].center)).normalize() * BALL_OTHERS_FRICTION
+                        balls_list[collition].circle_direction = Vector2(Vector2(balls_list[collition].center - Vector2(self.center))).normalize() * BALL_OTHERS_FRICTION
                     else:
                         del balls_list[collition]
                         balls_list.remove(self)
@@ -262,7 +269,7 @@ class Ball(Rect):
         if len(other_col_rect) > 0:
             for rectangle in other_col_rect:
                 if self.colliderect(rectangle.recttop):
-                    self.circle_direction.y = -abs(self.circle_direction.y)
+                    self.circle_direction.y = -abs(self.circle_direction.y) * BALL_SCREEN_FRICTION
                 if self.colliderect(rectangle.rectleft):
                     self.circle_direction.x = -abs(self.circle_direction.x)
                 if self.colliderect(rectangle.rectright):
@@ -303,7 +310,7 @@ class Game:
         self.fps = 0
         pygame.key.set_repeat(700,40)
         self.text_cursor_mode = Text("Mode",28,"impact",(0,0))
-        self.text_cursor_moded = Text("2",28,"impact",(0,0),(200,255,200))
+        self.text_cursor_moded = Text("2",28,"impact",(0,0),(100,155,100))
         self.text_info = Text("Info :",20,"comic sans",(0,0))
         self.nice_text = Text("Nice Balls",24,"calibri",(0,0))
         self.power = 10
