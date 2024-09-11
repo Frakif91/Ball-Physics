@@ -113,11 +113,7 @@ class CursorRect(Rect):
         self.type = "Ball"
         self.selected_ball = -1
 
-<<<<<<< Updated upstream
     def update(self,balls : list[Rect], rects : list[Rect], power : float, delta_time : 1):
-=======
-    def update(self,balls : list[Rect], rects : list[Rect]):
->>>>>>> Stashed changes
         global BALLS_DELETED
         self.velocity = Vector2(pygame.mouse.get_rel())
         self.speed = self.velocity.magnitude()
@@ -164,9 +160,10 @@ class CursorRect(Rect):
                         dist = Vector2(ball.center).distance_to(self.topleft)
                         direction = Vector2(Vector2(ball.center) - Vector2(self.topleft)).normalize()
                         if dist < MAX_HOLE_DISTANCE:
-                            norme = int((1-dist/MAX_HOLE_DISTANCE)*puissance)
-                            print(dist)
-                            ball.circle_direction = direction * norme
+                            norme = ((1-dist/MAX_HOLE_DISTANCE)*puissance)
+                            #print(dist)
+                            #ball.circle_direction = direction * norme
+                            ball.circle_direction = Vector2(ball.circle_direction + direction).normalize() * (norme + 1)
             case "Black Hole":
                 puissance = -power
                 self.topleft = pygame.mouse.get_pos()
