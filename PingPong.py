@@ -1,5 +1,7 @@
 import sys, math, random
 from time import sleep, monotonic
+import gc
+gc.disable()
 
 try:
     import pygame
@@ -21,8 +23,8 @@ from tkinter.messagebox import askyesno, showerror, showwarning
 from pygame import Vector2, Rect, Color, Surface
 
 CURSOR_SIZE = (10,10)
-MAX_BALLS = 350
-FPS = 60
+MAX_BALLS = 1000 
+FPS = 120
 BALLS_DELETED = 0
 CURRENT_BALL = -1
 BALL_SCREEN_FRICTION = 1
@@ -31,6 +33,8 @@ BALL_RECT_FRICTION = 0.95
 MAX_HOLE_DISTANCE = 300
 
 gravity = 0.05
+
+def get_gravity(): return Vector2(0,gravity)
 
 VECTOR_ZERO = Vector2(0,0)
 
@@ -77,15 +81,15 @@ class Collition_Rect(Rect):
 
         self.col_rect = [self.recttop,self.rectleft,self.rectright,self.rectbottom]
 
-        print("""
-              Top Left : {0} <-> {1}
-              Bottom Right : {2} <->  {3}
+        # print("""
+        #       Top Left : {0} <-> {1}
+        #       Bottom Right : {2} <->  {3}
 
-              Size : {4}
+        #       Size : {4}
               
-              """.format(self.topleft, rect.topleft, self.bottomright, rect.bottomright, rect.size))
+        #       """.format(self.topleft, rect.topleft, self.bottomright, rect.bottomright, rect.size))
 
-    def update(self):
+    def update(self, balls_list = []):
         #pygame.draw.rect(self.surface,self.color,self,self.tsize)
         
         pygame.draw.rect(self.surface,self.color,self.recttop,5)#self.tsize)
@@ -96,6 +100,17 @@ class Collition_Rect(Rect):
         self.suprise = max(0,self.suprise - 0.05)
         #self.tsize = 5 + self.suprise
 
+    def check_col_ball(self, ball : Rect):
+        if ball.colliderect(self):
+            if ball.colliderect(self.recttop):
+                ball.vector.y = -abs(ball.vector.y) * BALL_SCREEN_FRICTION
+            if ball.colliderect(self.rectleft):
+                ball.vector.x = -abs(ball.vector.x)
+            if ball.colliderect(self.rectright):
+                ball.vector.x = abs(ball.vector.x)
+            if self.colliderect(self.rectbottom):  
+                ball.vector.y = abs(ball.vector.y)
+    
     def surprize(self):
         self.surprise = 3
 
@@ -107,21 +122,22 @@ class CursorRect(Rect):
         self.size_min = 10
         self.size_max = 15
         self.magn_min = 5
-        self.magn_max = 50
+        self.magn_max = 70
         self.tsize = 5
         self.speed = 0.0
         self.type = "Ball"
         self.selected_ball = -1
+        self.vector : Vector2 = Vector2(0,0)
 
     def update(self,balls : list[Rect], rects : list[Rect], power : float, delta_time : 1):
         global BALLS_DELETED
-        self.velocity = Vector2(pygame.mouse.get_rel())
-        self.speed = self.velocity.magnitude()
+        self.vector = Vector2(pygame.mouse.get_rel())
+        self.speed = self.vector.magnitude()
         match(self.type):
             case "Ball":
-                if self.velocity != VECTOR_ZERO:
+                if self.vector != VECTOR_ZERO:
                     self.tsize = pygame.math.clamp(
-                        self.velocity.magnitude()*2,
+                        math.sqrt(self.vector.magnitude()*5),
                         self.size_min,
                         self.size_max)
                 else: 
@@ -131,18 +147,11 @@ class CursorRect(Rect):
                 self.topleft = self.rect.topleft
                 self.width, self.height = self.tsize*2,self.tsize*2
 
+                for ball in balls:
+                    if ball.colliderect(self) and (ball.position - self.center) != VECTOR_ZERO:
+                        ball.static_ballrect_collision (self)
             case "Selector":
                 self.topleft = pygame.mouse.get_pos()
-                """
-                if pygame.mouse.get_pressed()[0]:
-                    print("Pressed")
-                    for ball in balls:
-                        if ball.collidepoint(self.topleft):
-                            ball.circle_direction = VECTOR_ZERO
-                            ball.center = self.topleft
-                """
-                pass
-
             case "Eraser":
                 self.topleft = pygame.mouse.get_pos()
                 index = self.collidelist(balls)
@@ -157,30 +166,26 @@ class CursorRect(Rect):
                 pygame.draw.circle(self.surface,(50,50,50),self.topleft,MAX_HOLE_DISTANCE-1/puissance,10)
                 if pygame.mouse.get_pressed()[0]:
                     for ball in balls:
-                        dist = Vector2(ball.center).distance_to(self.topleft)
-                        direction = Vector2(Vector2(ball.center) - Vector2(self.topleft)).normalize()
+                        if ball.center == self.topleft: continue
+                        dist = ball.position.distance_to(self.topleft)
+                        direction = Vector2(ball.position - Vector2(self.topleft)).normalize()
                         if dist < MAX_HOLE_DISTANCE:
-                            norme = ((1-dist/MAX_HOLE_DISTANCE)*puissance)
-                            #print(dist)
-                            #ball.circle_direction = direction * norme
-                            ball.circle_direction = Vector2(ball.circle_direction + direction).normalize() * (norme + 1)
+                            norme = (1-(dist/MAX_HOLE_DISTANCE))*-puissance
+                            print(dist)
+                            ball.vector += direction * norme
             case "Black Hole":
                 puissance = -power
                 self.topleft = pygame.mouse.get_pos()
                 pygame.draw.circle(self.surface,(50,50,50),self.topleft,290,10)
                 if pygame.mouse.get_pressed()[0]:
                     for ball in balls:
-                        if ball.center == self.topleft: break
-                        dist = Vector2(ball.center).distance_to(self.topleft)
-                        direction = Vector2(Vector2(ball.center) - Vector2(self.topleft)).normalize()
+                        if ball.center == self.topleft: continue
+                        dist = ball.position.distance_to(self.topleft)
+                        direction = Vector2(ball.position - Vector2(self.topleft)).normalize()
                         if dist < MAX_HOLE_DISTANCE:
-                            norme = int((1-dist/MAX_HOLE_DISTANCE)*puissance)
+                            norme = (1-(dist/MAX_HOLE_DISTANCE))*puissance
                             print(dist)
-                            ball.circle_direction += direction * norme
-                        
-
-
-
+                            ball.vector += direction * norme
     
     def get_norm_velocity_not_null(self):
         if self.velocity != Vector2(0,0):
@@ -200,9 +205,8 @@ class Ball(Rect):
         self.topleft = start_coordinate
         #self.size = (30,30)
         self.screen_size = (1280,720)
-        self.circle_direction = direction
-        self.speed = 3
-        self.speed_up = 0.1
+        self.vector : Vector2 = direction
+        self.speed_up = 0.8
         self.surface = surface
         self.color = color
         self.selected = False
@@ -214,81 +218,126 @@ class Ball(Rect):
         self.width, self.height = self.tsize*2, self.tsize*2
         #pygame.draw.circle(self.surface,self.color,self.center,self.tsize,self.twidth,True,True,True,True)
         #print("New Rect",self)
+        self.position = Vector2(self.topleft) + Vector2(self.tsize)
+    
+    def screen_bounds_check(self, screen_bounds : Rect):
+        if self.colliderect(screen_bounds):
+            if self.bottom >= screen_bounds.bottom:
+                #print("Bounce Down")
+                self.vector.y = -abs(self.vector.y) * BALL_SCREEN_FRICTION
+                self.position.y = screen_bounds.bottom - (self.size[1]/2)
+                self.vector *= self.speed_up
+            if self.left <= screen_bounds.left:
+                #print("Bounce Left")
+                self.vector.x = max(abs(self.vector.x) * BALL_SCREEN_FRICTION,0.1)
+                self.vector *= self.speed_up
+            if self.top <= screen_bounds.top:
+                #print("Bounce Up")
+                self.vector.y  = max(abs(self.vector.y) * BALL_SCREEN_FRICTION,0.1)
+                self.vector *= self.speed_up
+
+            if self.right >= screen_bounds.right:
+                #print("Bounce Right")
+                self.vector.x = min(-abs(self.vector.x) * BALL_SCREEN_FRICTION,-0.1)
+                self.vector *= self.speed_up
+
+    def static_ballrect_collision(self, other : Rect, other_vel : Vector2 = Vector2(0,0)):
+        # autre = balle statique
+        delta = Vector2(other.center) - self.position
+        distance = delta.magnitude()
+
+        if distance == 0:
+            return
+        if distance > self.tsize + other.width/2:
+            return  # pas de collision
+
+        # --- 1) Correction : reculer la balle mobile ---
+        overlap = self.tsize + other.width/2 - distance
+        direction = delta.normalize()
+
+        # La balle statique ne bouge pas
+        self.position -= direction * overlap
+
+        # --- 2) Calcul du rebond ---
+        normal = direction
+
+        # Projection de la vitesse sur normal et tangent
+        v_n = self.vector.dot(normal)      # composante normale
+        v_t = self.vector.dot(Vector2(-normal.y, normal.x))  # tangent
+
+        # Inversion de la composante normale (rebond)
+        v_n = -v_n
+
+        # Reconstruction de la vitesse
+        tangent = Vector2(-normal.y, normal.x)
+        self.vector = tangent * v_t + normal * v_n
+        
+
+    def collide_with_other_ball(self, other):
+        # vecteur entre les deux centres
+        delta : Vector2 = other.position - self.position
+        distance = delta.magnitude()
+
+        # --- 1) Détection de collision ---
+        if distance == 0:
+            return
+        if distance > self.tsize + other.tsize:
+            return  # pas de collision
+
+        # --- 2) Correction : les séparer pour éviter la superposition ---
+        overlap = self.tsize + other.tsize - distance
+        direction = delta.normalize()
+
+        self.position -= direction * (overlap / 2)
+        other.position += direction * (overlap / 2)
+
+        # --- 3) Collision élastique réaliste ---
+        # Vecteur normal
+        normal = direction
+
+        # Vecteur tangent
+        tangent = Vector2(-normal.y, normal.x)
+
+        # Projections des vitesses
+        v1n = self .vector.dot(normal)
+        v1t = self .vector.dot(tangent)
+        v2n = other.vector.dot(normal)
+        v2t = other.vector.dot(tangent)
+
+        # Échange des composantes normales (collision élastique)
+        v1n, v2n = v2n, v1n
+
+        # Reconstruction des vitesses
+        self.vector = tangent * v1t + normal * v1n
+        other.vector = tangent * v2t + normal * v2n
+
+        # Mise à jour des rectangles
+        #self.position = Vector2(self.position.x - self.tsize*2, self.position.y - (self.tsize*2))
+        #self.position = Vector2(other.position.x - other.tsize*2, other.position.y - (other.tsize*2))
+ 
 
     def update(self,balls_list : list[Rect], cursor : CursorRect, other_col_rect: list[Rect] | list[Collition_Rect]):
-        global gravity, BALLS_DELETED, BALL_OTHERS_FRICTION, BALL_SCREEN_FRICTION
+        global BALLS_DELETED, BALL_OTHERS_FRICTION, BALL_SCREEN_FRICTION
+
+        if self.selected:
+            self.vector = Vector2(pygame.mouse.get_rel())
+            self.position = Vector2(cursor.topleft)
+            return pygame.draw.circle(self.surface,(255,255,255),self.position,self.tsize,self.twidth)
 
         #region Screen Bounds
-        if self.left <= 0:
-            #print("Bounce Left")
-            self.circle_direction[0] = BALL_SCREEN_FRICTION
-            self.speed += self.speed_up
-        if self.top <= 0:
-            #print("Bounce Up")
-            self.circle_direction[1] = BALL_SCREEN_FRICTION
-            self.speed += self.speed_up
-
-        if self.right >= self.screen_size[0]:
-            #print("Bounce Right")
-            self.circle_direction[0] = -BALL_SCREEN_FRICTION
-            self.speed += self.speed_up
-
-        if self.bottom >= self.screen_size[1]:
-            #print("Bounce Down")
-            self.circle_direction[1] = -abs(self.circle_direction[1]) * BALL_SCREEN_FRICTION
-            self.bottom = self.screen_size[1]
-            self.speed += self.speed_up
+        self.screen_bounds_check(Rect(VECTOR_ZERO,self.screen_size))
         #endregion Screen Bounds
-        
-        # Collide with the cursor
-        if self.colliderect(cursor):
-            if cursor.type == "Ball":
-                if Vector2(Vector2(self.center) - Vector2(cursor.center)) != VECTOR_ZERO:
-                    self.circle_direction = Vector2(Vector2(self.center) - Vector2(cursor.center)).normalize() * BALL_OTHERS_FRICTION
-            else:
-                pass
 
         # Collition with every balls
         if len(balls_list) > 1:
             col_balls = self.collidelistall(balls_list)
             for collition in col_balls:
-                if balls_list[collition] != self:
-                    #print(self, "<->" ,balls_list[collition])
-                    if (Vector2(self.center) - Vector2(balls_list[collition].center)) != Vector2(0,0):
-                        self.circle_direction = Vector2(Vector2(self.center) - Vector2(balls_list[collition].center)).normalize() * BALL_OTHERS_FRICTION
-                        balls_list[collition].circle_direction = Vector2(Vector2(balls_list[collition].center - Vector2(self.center))).normalize() * BALL_OTHERS_FRICTION
-                    else:
-                        del balls_list[collition]
-                        balls_list.remove(self)
-                        BALLS_DELETED += 2
+                self.collide_with_other_ball(balls_list[collition])
 
-        # Collition with rectangle
-        if len(other_col_rect) > 0:
-            for rectangle in other_col_rect:
-                if self.colliderect(rectangle.recttop):
-                    self.circle_direction.y = -abs(self.circle_direction.y) * BALL_SCREEN_FRICTION
-                if self.colliderect(rectangle.rectleft):
-                    self.circle_direction.x = -abs(self.circle_direction.x)
-                if self.colliderect(rectangle.rectright):
-                    self.circle_direction.x = abs(self.circle_direction.x)
-                if self.colliderect(rectangle.rectbottom):  
-                    self.circle_direction.y = abs(self.circle_direction.y)
-                """
-                if self.colliderect(rectangle.recttop) or self.colliderect(rectangle.rectbottom):
-                    self.circle_direction.y *= -1
-                elif self.colliderect(rectangle.rectleft) or self.colliderect(rectangle.rectright):
-                    self.circle_direction.x *= -1
-                """
-                    
-        if self.selected:
-            self.circle_direction = Vector2(pygame.mouse.get_rel())
-            self.center = cursor.topleft
-            return pygame.draw.circle(self.surface,(255,255,255),self.center,self.tsize,self.twidth)
-        else:
-            self.circle_direction = Vector2(self.circle_direction + Vector2(0,gravity))
-            self.topleft += self.circle_direction * 3 #* self.speed
-            return pygame.draw.circle(self.surface,self.color,self.center,self.tsize,self.twidth)
-
+        self.vector += get_gravity()
+        self.position += self.vector
+        self.center = self.position
+        return pygame.draw.circle(self.surface,self.color,self.position if self.vector.magnitude() > 1 else self.center,self.tsize,self.twidth)
 
 #endregion
 
@@ -306,13 +355,26 @@ class Game:
         self.ping = 1
         self.fps = 0
         pygame.key.set_repeat(700,40)
-        self.text_cursor_mode = Text("Mode",28,"impact",(0,0))
-        self.text_cursor_moded = Text("2",28,"impact",(0,0),(100,155,100))
+        self.text_cursor_mode = Text("Mode",28,"rubik",(0,0))
+        self.text_cursor_moded = Text("2",28,"rubik",(0,0),(100,155,100))
         self.text_info = Text("Info :",20,"comic sans",(0,0))
         self.nice_text = Text("Nice Balls",24,"calibri",(0,0))
         self.power = 10
         tracemalloc.start()
     
+    def summon_random_ball(self, pos : Vector2 = None):
+        if pos is None:
+            pos = Vector2(random.randint(0,self.size[0]),random.randint(0,self.size[1]))
+        r_color = (random.randint(0,360),50,50,100)
+        rand_color = Color(0,0,0,1)
+        rand_color.hsla = r_color
+
+        self.balls.append(Ball(self.screen,
+            pos,
+            Vector2(random.uniform(-1.0,1.0),random.uniform(-1.0,1.0)).normalize(),
+            (rand_color)))
+
+
     def run(self):
         global BALLS_DELETED
         #region Run
@@ -326,12 +388,14 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         if len(self.balls) < MAX_BALLS:
+                            r_color = (random.randint(0, 360),50,50,100)
+                            rand_color = Color(0,0,0,1)
+                            rand_color.hsla = r_color
+
                             self.balls.append(Ball(self.screen,
                                 Vector2(random.randint(0,self.size[0]),random.randint(0,self.size[1])),
                                 Vector2(random.uniform(-1.0,1.0),random.uniform(-1.0,1.0)).normalize(),
-                                (random.randint(50,200),
-                                random.randint(50,200),
-                                random.randint(50,200))))
+                                (rand_color)))
                     if event.key == pygame.K_BACKSPACE:
                         if len(self.balls) > 0:
                             self.balls.pop(len(self.balls)-1)
@@ -348,17 +412,26 @@ class Game:
                                 self.cursor.type = "Black Hole"
                             case "Black Hole":
                                 self.cursor.type = "Ball"
+                    if event.key == pygame.K_1:
+                        if len(self.balls)>100:
+                            for i in range(len(self.balls)-1,100-1,-1):
+                                del(self.balls[i])
+                        else:
+                            for i in range(len(self.balls),100,1):
+                                self.summon_random_ball()
                             
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if pygame.mouse.get_pressed()[0]:
                         if self.cursor.type == "Ball":
                             if len(self.balls) < MAX_BALLS:
+                                rel = pygame.mouse.get_rel()
+                                tsize = random.randint(6,10)
                                 self.balls.append(Ball(self.screen,
-                                    Vector2(pygame.mouse.get_pos()),
-                                    Vector2(pygame.mouse.get_rel()),
+                                    Vector2(pygame.mouse.get_pos()) + (Vector2(rel) if rel != (0,0) else Vector2(1,1)).normalize()*tsize*2,
+                                    Vector2(rel),
                                     (random.randint(50,200),
                                     random.randint(50,200),
-                                    random.randint(50,200))))
+                                    random.randint(50,200)),tsize))
                         elif self.cursor.type == "Selector":
                             index = self.cursor.collidelist(self.balls)
                             if index != -1:
@@ -367,10 +440,6 @@ class Game:
                                 print(index)
                 if event.type == pygame.MOUSEBUTTONUP:
                     if not pygame.mouse.get_pressed()[0] and len(self.balls) > 0 and self.cursor.type == "Selector":
-                        if Vector2(pygame.mouse.get_rel()) != VECTOR_ZERO:
-                            self.balls[self.cursor.selected_ball].circle_direction = Vector2(pygame.mouse.get_rel()).normalize() * self.balls[self.cursor.selected_ball].speed
-                        else:
-                            self.circle_direction = VECTOR_ZERO
                         self.balls[self.cursor.selected_ball].selected = False
                         self.cursor.selected_ball = -1
                 if event.type == pygame.MOUSEWHEEL:
@@ -383,15 +452,7 @@ class Game:
 #endregion
     #region Game Step
     def step(self):
-        #if pygame.key.get_pressed()[pygame.K_SPACE]:
-        #    self.balls.append(Ball(self.screen,
-        #                        Vector2(random.randint(0,self.size[0]),random.randint(0,self.size[1])),
-        #                        Vector2(random.uniform(-1.0,1.0),random.uniform(-1.0,1.0)).normalize(),
-        #                        (random.randint(50,200),
-        #                        random.randint(50,200),
-        #                        random.randint(50,200))))
-
-        delta_time = 1/(self.clock.get_fps() + 1)
+        delta_time = 1/max(self.clock.get_fps(),0.001)
 
         self.cursor.update(self.balls,self.col_rect,self.power,delta_time)
         self.screen.blit(self.text_cursor_mode.update("Cursor Type : "),(0,0))
@@ -400,10 +461,11 @@ class Game:
             self.screen.blit(self.text_info.update("Number of Balls : {}/{}".format(len(self.balls),MAX_BALLS)),(0,40))
             self.screen.blit(self.text_info.update("Deleted Balls : {}".format(BALLS_DELETED)),(0,70))
         self.screen.blit(self.text_info.update("FPS : " + str(round(self.clock.get_fps(),2))),(0,100))
-        if tracemalloc_available:
-            self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
         self.screen.blit(self.nice_text.update("Nice Ball Project"),(0,180))
         self.screen.blit(self.nice_text.update("Power : " + str(self.power)[0:4]),(1100,20))
+
+        if tracemalloc_available:
+            self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
 
         for balle in self.balls:
             balle.update(self.balls,self.cursor,self.col_rect)
@@ -412,6 +474,7 @@ class Game:
             rectangle.update()
         
         last_check = monotonic()
+        
         tracemalloc.take_snapshot()            
         self.ping = self.clock.tick(60)
 #endregion
