@@ -23,7 +23,7 @@ from tkinter.messagebox import askyesno, showerror, showwarning
 from pygame import Vector2, Rect, Color, Surface
 
 CURSOR_SIZE = (10,10)
-MAX_BALLS = 1000 
+MAX_BALLS = 500
 FPS = 120
 BALLS_DELETED = 0
 CURRENT_BALL = -1
@@ -32,7 +32,7 @@ BALL_OTHERS_FRICTION = 0.9
 BALL_RECT_FRICTION = 0.95
 MAX_HOLE_DISTANCE = 300
 
-gravity = 0.05
+gravity = 0.34
 
 def get_gravity(): return Vector2(0,gravity)
 
@@ -103,13 +103,13 @@ class Collition_Rect(Rect):
     def check_col_ball(self, ball : Rect):
         if ball.colliderect(self):
             if ball.colliderect(self.recttop):
-                ball.vector.y = -abs(ball.vector.y) * BALL_SCREEN_FRICTION
+                ball.vector.y = -abs(ball.vector.y) * BALL_OTHERS_FRICTION
             if ball.colliderect(self.rectleft):
-                ball.vector.x = -abs(ball.vector.x)
-            if ball.colliderect(self.rectright):
-                ball.vector.x = abs(ball.vector.x)
+                ball.vector.x = -abs(ball.vector.x) * BALL_OTHERS_FRICTION
+            if ball.colliderect(self.rectright): 
+                ball.vector.x = abs(ball.vector.x) * BALL_OTHERS_FRICTION
             if self.colliderect(self.rectbottom):  
-                ball.vector.y = abs(ball.vector.y)
+                ball.vector.y = abs(ball.vector.y) * BALL_OTHERS_FRICTION
     
     def surprize(self):
         self.surprise = 3
@@ -227,10 +227,13 @@ class Ball(Rect):
                 self.vector.y = -abs(self.vector.y) * BALL_SCREEN_FRICTION
                 self.position.y = screen_bounds.bottom - (self.size[1]/2)
                 self.vector *= self.speed_up
+
             if self.left <= screen_bounds.left:
                 #print("Bounce Left")
                 self.vector.x = max(abs(self.vector.x) * BALL_SCREEN_FRICTION,0.1)
                 self.vector *= self.speed_up
+                self.position.x = screen_bounds.left + (self.size[0]/2)
+
             if self.top <= screen_bounds.top:
                 #print("Bounce Up")
                 self.vector.y  = max(abs(self.vector.y) * BALL_SCREEN_FRICTION,0.1)
@@ -240,6 +243,7 @@ class Ball(Rect):
                 #print("Bounce Right")
                 self.vector.x = min(-abs(self.vector.x) * BALL_SCREEN_FRICTION,-0.1)
                 self.vector *= self.speed_up
+                self.position.x = screen_bounds.right - (self.size[0]/2)
 
     def static_ballrect_collision(self, other : Rect, other_vel : Vector2 = Vector2(0,0)):
         # autre = balle statique
@@ -371,7 +375,7 @@ class Game:
 
         self.balls.append(Ball(self.screen,
             pos,
-            Vector2(random.uniform(-1.0,1.0),random.uniform(-1.0,1.0)).normalize(),
+            Vector2(random.uniform(-1.0,1.0)*3,random.uniform(-1.0,1.0)*3).normalize(),
             (rand_color)))
 
 
@@ -419,15 +423,35 @@ class Game:
                         else:
                             for i in range(len(self.balls),100,1):
                                 self.summon_random_ball()
-                            
+                    if event.key == pygame.K_2:
+                        if len(self.balls)>100:
+                            for i in range(len(self.balls)-1,200-1,-1):
+                                del(self.balls[i])
+                        else:
+                            for i in range(len(self.balls),200,1):
+                                self.summon_random_ball()
+                    
+                    if event.key == pygame.K_3:
+                        if len(self.balls)>100:
+                            for i in range(len(self.balls)-1,300-1,-1):
+                                del(self.balls[i])
+                        else:
+                            for i in range(len(self.balls),300,1):
+                                self.summon_random_ball()
+                    if event.key == pygame.K_0:
+                        for i in range(len(self.balls)-1,-1,-1):
+                            del(self.balls[i])
+                        self.balls = []
+
+                        
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if pygame.mouse.get_pressed()[0]:
                         if self.cursor.type == "Ball":
                             if len(self.balls) < MAX_BALLS:
                                 rel = pygame.mouse.get_rel()
-                                tsize = random.randint(6,10)
+                                tsize = random.randint(10,20)
                                 self.balls.append(Ball(self.screen,
-                                    Vector2(pygame.mouse.get_pos()) + (Vector2(rel) if rel != (0,0) else Vector2(1,1)).normalize()*tsize*2,
+                                    Vector2(pygame.mouse.get_pos()) + (Vector2(rel)*2 if rel != (0,0) else Vector2(0,0.1)).normalize()*tsize*2,
                                     Vector2(rel),
                                     (random.randint(50,200),
                                     random.randint(50,200),
@@ -465,7 +489,8 @@ class Game:
         self.screen.blit(self.nice_text.update("Power : " + str(self.power)[0:4]),(1100,20))
 
         if tracemalloc_available:
-            self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
+            pass
+            #self.screen.blit(self.text_info.update(f"Memory : {convert_size(tracemalloc.get_traced_memory()[0])}, Peak : {convert_size(tracemalloc.get_traced_memory()[1])}"),(0,130))
 
         for balle in self.balls:
             balle.update(self.balls,self.cursor,self.col_rect)
@@ -475,7 +500,7 @@ class Game:
         
         last_check = monotonic()
         
-        tracemalloc.take_snapshot()            
+        #tracemalloc.take_snapshot()            
         self.ping = self.clock.tick(60)
 #endregion
 
